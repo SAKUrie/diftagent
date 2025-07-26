@@ -9,6 +9,8 @@ from pydantic import BaseModel, Field
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+from typing import List
+from .login import get_db, get_current_user, User
 
 class DocType(enum.Enum):
     resume = "resume"
@@ -84,30 +86,31 @@ def create_document(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    # 新建文档
-    document = Document(
-        user_id=current_user.id,
-        type=doc.type,
-        title=doc.title,
-        metadata=doc.metadata
-    )
-    db.add(document)
-    db.flush()  # 获取document.id
-
-    # 新建首个版本
-    version = DocumentVersion(
-        document_id=document.id,
-        version_number=1,
-        content=doc.content,
-        content_format=doc.content_format,
-        created_by=current_user.id
-    )
-    db.add(version)
-    db.flush()
-    document.current_version_id = version.id
-    db.commit()
-    db.refresh(document)
-    return document
+    try:
+        document = Document(
+            user_id=current_user.id,
+            type=doc.type,
+            title=doc.title,
+            metadata=doc.metadata
+        )
+        db.add(document)
+        db.flush()
+        version = DocumentVersion(
+            document_id=document.id,
+            version_number=1,
+            content=doc.content,
+            content_format=doc.content_format,
+            created_by=current_user.id
+        )
+        db.add(version)
+        db.flush()
+        document.current_version_id = version.id
+        db.commit()
+        db.refresh(document)
+        return document
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Create document failed")
 
 @router.post("/{doc_id}/new_version", response_model=DocumentOut)
 def add_version(
@@ -117,25 +120,30 @@ def add_version(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    document = db.query(Document).filter(Document.id == doc_id, Document.user_id == current_user.id, Document.deleted_at == None).first()
-    if not document:
-        raise HTTPException(status_code=404, detail="Document not found")
-    # 计算新版本号
-    last_version = db.query(DocumentVersion).filter(DocumentVersion.document_id == doc_id).order_by(DocumentVersion.version_number.desc()).first()
-    new_version_number = (last_version.version_number if last_version else 0) + 1
-    version = DocumentVersion(
-        document_id=doc_id,
-        version_number=new_version_number,
-        content=content,
-        content_format=content_format,
-        created_by=current_user.id
-    )
-    db.add(version)
-    db.flush()
-    document.current_version_id = version.id
-    db.commit()
-    db.refresh(document)
-    return document
+    try:
+        document = db.query(Document).filter(Document.id == doc_id, Document.user_id == current_user.id, Document.deleted_at == None).first()
+        if not document:
+            raise HTTPException(status_code=404, detail="Document not found")
+        last_version = db.query(DocumentVersion).filter(DocumentVersion.document_id == doc_id).order_by(DocumentVersion.version_number.desc()).first()
+        new_version_number = (last_version.version_number if last_version else 0) + 1
+        version = DocumentVersion(
+            document_id=doc_id,
+            version_number=new_version_number,
+            content=content,
+            content_format=content_format,
+            created_by=current_user.id
+        )
+        db.add(version)
+        db.flush()
+        document.current_version_id = version.id
+        db.commit()
+        db.refresh(document)
+        return document
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Add version failed")
 
 @router.get("/{doc_id}", response_model=DocumentOut)
 def get_document(
@@ -143,10 +151,15 @@ def get_document(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    document = db.query(Document).filter(Document.id == doc_id, Document.user_id == current_user.id, Document.deleted_at == None).first()
-    if not document:
-        raise HTTPException(status_code=404, detail="Document not found")
-    return document
+    try:
+        document = db.query(Document).filter(Document.id == doc_id, Document.user_id == current_user.id, Document.deleted_at == None).first()
+        if not document:
+            raise HTTPException(status_code=404, detail="Document not found")
+        return document
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Get document failed")
 
 @router.post("/{doc_id}/revert/{version_number}", response_model=DocumentOut)
 def revert_document(
@@ -155,13 +168,85 @@ def revert_document(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    document = db.query(Document).filter(Document.id == doc_id, Document.user_id == current_user.id, Document.deleted_at == None).first()
-    if not document:
-        raise HTTPException(status_code=404, detail="Document not found")
-    version = db.query(DocumentVersion).filter(DocumentVersion.document_id == doc_id, DocumentVersion.version_number == version_number).first()
-    if not version:
-        raise HTTPException(status_code=404, detail="Version not found")
-    document.current_version_id = version.id
-    db.commit()
-    db.refresh(document)
-    return document
+    try:
+        document = db.query(Document).filter(Document.id == doc_id, Document.user_id == current_user.id, Document.deleted_at == None).first()
+        if not document:
+            raise HTTPException(status_code=404, detail="Document not found")
+        version = db.query(DocumentVersion).filter(DocumentVersion.document_id == doc_id, DocumentVersion.version_number == version_number).first()
+        if not version:
+            raise HTTPException(status_code=404, detail="Version not found")
+        document.current_version_id = version.id
+        db.commit()
+        db.refresh(document)
+        return document
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Revert document failed")
+
+@router.get("/{doc_id}/versions", response_model=List[DocumentVersionOut])
+def list_versions(
+    doc_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    try:
+        document = db.query(Document).filter(
+            Document.id == doc_id,
+            Document.user_id == current_user.id,
+            Document.deleted_at == None
+        ).first()
+        if not document:
+            raise HTTPException(status_code=404, detail="Document not found")
+        versions = db.query(DocumentVersion).filter(
+            DocumentVersion.document_id == doc_id,
+            DocumentVersion.deleted_at == None
+        ).order_by(DocumentVersion.updated_at.desc()).all()
+        return versions
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="List versions failed")
+
+@router.get("/{doc_id}/version/{version_number}", response_model=DocumentVersionOut)
+def get_version(
+    doc_id: str,
+    version_number: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    try:
+        document = db.query(Document).filter(
+            Document.id == doc_id,
+            Document.user_id == current_user.id,
+            Document.deleted_at == None
+        ).first()
+        if not document:
+            raise HTTPException(status_code=404, detail="Document not found")
+        version = db.query(DocumentVersion).filter(
+            DocumentVersion.document_id == doc_id,
+            DocumentVersion.version_number == version_number,
+            DocumentVersion.deleted_at == None
+        ).first()
+        if not version:
+            raise HTTPException(status_code=404, detail="Version not found")
+        return version
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Get version failed")
+
+@router.get("/", response_model=List[DocumentOut])
+def list_documents(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    try:
+        docs = db.query(Document).filter(
+            Document.user_id == current_user.id,
+            Document.deleted_at == None
+        ).order_by(Document.updated_at.desc()).all()
+        return docs
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="List documents failed")

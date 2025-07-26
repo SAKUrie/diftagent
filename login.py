@@ -22,8 +22,10 @@ from fastapi import (
     Header, 
     status, 
     Request,
-    APIRouter
+    APIRouter,
+    Cookie
 )
+from fastapi.responses import JSONResponse
 
 
 # --------------------- 日志配置 ---------------------
@@ -44,7 +46,7 @@ class Settings(BaseSettings):
     pg_dsn: str = "postgresql+psycopg2://postgres:010921@127.0.0.1:5400/aiagent"
     jwt_secret: str = "aiagent-gateway-secret"
     jwt_algorithm: str = "HS256"
-    access_token_expire_minutes: int = 30
+    access_token_expire_minutes: int = 60*24 # 1天  
     refresh_token_expire_days: int = 7
     dify_agent_url: str = "-----------"
     api_keys: Dict[str, str] = {
@@ -238,6 +240,27 @@ async def get_api_key(
         )
     return {"api_key": x_api_key, "role": role}
 
+def get_token_from_cookie(access_token: str = Cookie(None)):
+    if not access_token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return access_token
+
+def verify_token_from_cookie(
+    access_token: str = Depends(get_token_from_cookie)
+):
+    try:
+        payload = jwt.decode(
+            access_token,
+            settings.jwt_secret,
+            algorithms=[settings.jwt_algorithm]
+        )
+        username = payload.get("sub")
+        if not username:
+            raise HTTPException(status_code=401, detail="Invalid token")
+        return username
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
 app = FastAPI()
 
 # --------------------- 登录 ---------------------
@@ -248,25 +271,30 @@ async def login_for_access_token(
 ):
     try:
         user = db.query(User).filter(User.username == form_data.username).first()
-        print(f"Verifying password: {form_data.password} against {user.password_hash}")
         if not user or not verify_password(form_data.password, user.password_hash):
-            logger.warning(f"Login failed for user: {form_data.username}")
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Incorrect username or password",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
-        if not user.is_active:
-            logger.warning(f"Inactive user login attempt: {form_data.username}")
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Inactive user"
-            )
+            raise HTTPException(status_code=401, detail="Incorrect username or password")
         tokens = create_tokens(user)
         user.refresh_token = tokens["refresh_token"]
         db.commit()
-        logger.info(f"User logged in: {form_data.username}")
-        return tokens
+        response = JSONResponse(content=tokens)
+        # 写入 token 到 cookie
+        response.set_cookie(
+            key="access_token",
+            value=tokens["access_token"],
+            httponly=True,
+            secure=True,  # 生产环境必须为 True
+            samesite="Lax",
+            max_age=60*60*24  # 1天
+        )
+        # 可选：写入页面跳转信息
+        response.set_cookie(
+            key="last_page",
+            value="/dashboard",
+            httponly=False,
+            secure=True,
+            samesite="Lax"
+        )
+        return response
     except Exception as e:
         logger.error(f"Login error: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail="Internal server error")
