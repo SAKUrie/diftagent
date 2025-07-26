@@ -423,8 +423,6 @@ def authorize(role: str, tool: str):
         detail=f"Insufficient permissions for this tool {tool}"
     )
 
-
-
 class ToolCheckRequest(BaseModel):
     tool: str
 
@@ -488,6 +486,13 @@ async def log_requests(request: Request, call_next):
     except Exception as e:
         logger.error(f"Request error: {traceback.format_exc()}")
         raise
+
+
+# 添加 路由
+from doc_api import doc_router as document_router
+app.include_router(document_router)
+
+
 
 if __name__ == "__main__":
     import uvicorn

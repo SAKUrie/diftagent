@@ -34,7 +34,7 @@ export default function DocumentsPage() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ title, type, content, content_format: 'markdown' })
+      //body: JSON.stringify({ title, type, content, content_format: 'markdown' })
     })
     if (res.ok) {
       setMsg('新建成功')

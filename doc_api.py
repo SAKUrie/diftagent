@@ -4,13 +4,12 @@ from sqlalchemy.orm import relationship
 import enum
 import uuid
 from datetime import datetime
-from .login import Base, get_db, User  # 假设Base已在login.py定义
+from login import Base, get_db, User,get_db, get_current_user_from_cookie
 from pydantic import BaseModel, Field
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List
-from .login import get_db, get_current_user_from_cookie, User
 
 class DocType(enum.Enum):
     resume = "resume"
@@ -24,7 +23,7 @@ class Document(Base):
     type = Column(Enum(DocType), nullable=False)
     title = Column(String, nullable=False, default="")
     current_version_id = Column(UUID(as_uuid=True), ForeignKey("document_versions.id"), nullable=True)
-    metadata = Column(JSONB, nullable=False, default=dict)
+    # metadata = Column(JSONB, nullable=False, default=dict)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     deleted_at = Column(DateTime, nullable=True)
@@ -44,7 +43,7 @@ class DocumentVersion(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     deleted_at = Column(DateTime, nullable=True)
-    metadata = Column(JSONB, nullable=False, default=dict)
+    # metadata = Column(JSONB, nullable=False, default=dict)
 
     document = relationship("Document", back_populates="versions")
 
@@ -78,9 +77,9 @@ class DocumentCreate(BaseModel):
     content_format: str = "markdown"
     metadata: dict = Field(default_factory=dict)
 
-router = APIRouter(prefix="/documents", tags=["Documents"])
+doc_router = APIRouter(prefix="/documents", tags=["Documents"])
 
-@router.post("/", response_model=DocumentOut)
+@doc_router.post("/", response_model=DocumentOut)
 def create_document(
     doc: DocumentCreate,
     db: Session = Depends(get_db),
@@ -112,7 +111,7 @@ def create_document(
         db.rollback()
         raise HTTPException(status_code=500, detail="Create document failed")
 
-@router.post("/{doc_id}/new_version", response_model=DocumentOut)
+@doc_router.post("/{doc_id}/new_version", response_model=DocumentOut)
 def add_version(
     doc_id: str,
     content: str,
@@ -145,7 +144,7 @@ def add_version(
         db.rollback()
         raise HTTPException(status_code=500, detail="Add version failed")
 
-@router.get("/{doc_id}", response_model=DocumentOut)
+@doc_router.get("/{doc_id}", response_model=DocumentOut)
 def get_document(
     doc_id: str,
     db: Session = Depends(get_db),
@@ -161,7 +160,7 @@ def get_document(
     except Exception as e:
         raise HTTPException(status_code=500, detail="Get document failed")
 
-@router.post("/{doc_id}/revert/{version_number}", response_model=DocumentOut)
+@doc_router.post("/{doc_id}/revert/{version_number}", response_model=DocumentOut)
 def revert_document(
     doc_id: str,
     version_number: int,
@@ -185,7 +184,7 @@ def revert_document(
         db.rollback()
         raise HTTPException(status_code=500, detail="Revert document failed")
 
-@router.get("/{doc_id}/versions", response_model=List[DocumentVersionOut])
+@doc_router.get("/{doc_id}/versions", response_model=List[DocumentVersionOut])
 def list_versions(
     doc_id: str,
     db: Session = Depends(get_db),
@@ -209,7 +208,7 @@ def list_versions(
     except Exception as e:
         raise HTTPException(status_code=500, detail="List versions failed")
 
-@router.get("/{doc_id}/version/{version_number}", response_model=DocumentVersionOut)
+@doc_router.get("/{doc_id}/version/{version_number}", response_model=DocumentVersionOut)
 def get_version(
     doc_id: str,
     version_number: int,
@@ -237,7 +236,7 @@ def get_version(
     except Exception as e:
         raise HTTPException(status_code=500, detail="Get version failed")
 
-@router.get("/", response_model=List[DocumentOut])
+@doc_router.get("/", response_model=List[DocumentOut])
 def list_documents(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_from_cookie)  # 修改此处
