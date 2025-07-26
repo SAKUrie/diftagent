@@ -16,12 +16,40 @@ export default function SignupPage() {
     password: '',
     confirmPassword: ''
   })
+  const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState(false)
   const router = useRouter()
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    // 模拟注册成功，跳转到登录页面
-    router.push('/auth/login')
+    setError(null)
+    setSuccess(false)
+    if (formData.password !== formData.confirmPassword) {
+      setError('两次输入的密码不一致')
+      return
+    }
+    try {
+      const res = await fetch('http://localhost:8000/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: formData.email,
+          username: formData.username,
+          password: formData.password,
+          role: 'guest'
+        }),
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        setError(data.detail || '注册失败')
+        return
+      }
+      setSuccess(true)
+      // 注册成功，2秒后跳转到登录页
+      setTimeout(() => router.push('/auth/login'), 2000)
+    } catch (err) {
+      setError('网络错误，请稍后重试')
+    }
   }
 
   return (
@@ -55,47 +83,53 @@ export default function SignupPage() {
           </CardHeader>
 
           <CardContent className="space-y-4">
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <FloatingInput
-                type="email"
-                label="邮箱"
-                placeholder="输入您的邮箱地址"
-                value={formData.email}
-                onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
-                required
-              />
+            {success ? (
+              <div className="text-green-600 text-center py-4">注册成功，正在跳转到登录页...</div>
+            ) : (
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <FloatingInput
+                  type="email"
+                  label="邮箱"
+                  placeholder="输入您的邮箱地址"
+                  value={formData.email}
+                  onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
+                  required
+                />
 
-              <FloatingInput
-                type="text"
-                label="用户名"
-                placeholder="输入用户名"
-                value={formData.username}
-                onChange={(e) => setFormData(prev => ({ ...prev, username: e.target.value }))}
-                required
-              />
+                <FloatingInput
+                  type="text"
+                  label="用户名"
+                  placeholder="输入用户名"
+                  value={formData.username}
+                  onChange={(e) => setFormData(prev => ({ ...prev, username: e.target.value }))}
+                  required
+                />
 
-              <FloatingInput
-                type="password"
-                label="密码"
-                placeholder="输入密码"
-                value={formData.password}
-                onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
-                required
-              />
+                <FloatingInput
+                  type="password"
+                  label="密码"
+                  placeholder="输入密码"
+                  value={formData.password}
+                  onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
+                  required
+                />
 
-              <FloatingInput
-                type="password"
-                label="确认密码"
-                placeholder="再次输入密码"
-                value={formData.confirmPassword}
-                onChange={(e) => setFormData(prev => ({ ...prev, confirmPassword: e.target.value }))}
-                required
-              />
+                <FloatingInput
+                  type="password"
+                  label="确认密码"
+                  placeholder="再次输入密码"
+                  value={formData.confirmPassword}
+                  onChange={(e) => setFormData(prev => ({ ...prev, confirmPassword: e.target.value }))}
+                  required
+                />
 
-              <Button type="submit" className="w-full h-10 bg-primary hover:bg-primary/90 text-primary-foreground">
-                注册
-              </Button>
-            </form>
+                {error && <div className="text-red-500 text-sm">{error}</div>}
+
+                <Button type="submit" className="w-full h-10 bg-primary hover:bg-primary/90 text-primary-foreground">
+                  注册
+                </Button>
+              </form>
+            )}
 
             <Separator className="my-4" />
 

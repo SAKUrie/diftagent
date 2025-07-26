@@ -132,24 +132,7 @@ class InvokePayload(BaseModel):
     tool: str
     params: dict
 
-# --------------------- 权限配置 ---------------------
-# 注意：实际应用中应从数据库或配置中心加载
-PERMISSIONS = {
-    "free": ["tool_basic"],
-    "vip": ["tool_basic", "tool_advanced"],
-    "vvip": ["all_tools"],
-    "student": ["recommend_unis"],
-    "teacher": ["all_tools"]
-}
 
-def authorize(role: str, tool: str):
-    allowed = PERMISSIONS.get(role, [])
-    if "all_tools" in allowed or tool in allowed:
-        return True
-    raise HTTPException(
-        status_code=status.HTTP_403_FORBIDDEN,
-        detail="Insufficient permissions for this tool"
-    )
 
 # --------------------- JWT 管理 ---------------------
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
@@ -240,28 +223,60 @@ async def get_api_key(
         )
     return {"api_key": x_api_key, "role": role}
 
+from fastapi import Cookie
+
 def get_token_from_cookie(access_token: str = Cookie(None)):
     if not access_token:
         raise HTTPException(status_code=401, detail="Not authenticated")
     return access_token
 
-def verify_token_from_cookie(
-    access_token: str = Depends(get_token_from_cookie)
+async def get_current_user_from_cookie(
+    access_token: str = Depends(get_token_from_cookie),
+    db: Session = Depends(get_db)
 ):
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials (cookie)",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
     try:
         payload = jwt.decode(
-            access_token,
-            settings.jwt_secret,
+            access_token, 
+            settings.jwt_secret, 
             algorithms=[settings.jwt_algorithm]
         )
-        username = payload.get("sub")
-        if not username:
-            raise HTTPException(status_code=401, detail="Invalid token")
-        return username
-    except Exception:
-        raise HTTPException(status_code=401, detail="Invalid token")
+        username: str = payload.get("sub")
+        if username is None:
+            logger.warning("JWT payload missing 'sub'")
+            raise credentials_exception
+        token_data = TokenData(username=username)
+    except JWTError as e:
+        logger.error(f"JWT decode error: {e}")
+        raise credentials_exception
+    except Exception as e:
+        logger.error(f"Unexpected error in get_current_user_from_cookie: {traceback.format_exc()}")
+        raise credentials_exception
+    
+    try:
+        user = db.query(User).filter(User.username == token_data.username).first()
+        if user is None or not user.is_active:
+            logger.warning(f"User not found or inactive: {token_data.username}")
+            raise credentials_exception
+        return user
+    except Exception as e:
+        logger.error(f"DB error in get_current_user_from_cookie: {traceback.format_exc()}")
+        raise credentials_exception
 
 app = FastAPI()
+
+# 添加 CORS 中间件
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],  # 前端开发地址
+    allow_credentials=True,
+    allow_methods=["*"],  # 允许所有方法，包括 OPTIONS
+    allow_headers=["*"],  # 允许所有请求头
+)
 
 # --------------------- 登录 ---------------------
 @app.post("/login", response_model=Token)
@@ -270,9 +285,19 @@ async def login_for_access_token(
     db: Session = Depends(get_db)
 ):
     try:
-        user = db.query(User).filter(User.username == form_data.username).first()
-        if not user or not verify_password(form_data.password, user.password_hash):
+        # 支持用户名或邮箱登录
+        user = db.query(User).filter(
+            (User.username == form_data.username) | (User.email == form_data.username)
+        ).first()
+        if not user:
+            logger.warning(f"Login failed: user not found ({form_data.username})")
             raise HTTPException(status_code=401, detail="Incorrect username or password")
+        if not verify_password(form_data.password, user.password_hash):
+            logger.warning(f"Login failed: wrong password for {form_data.username}")
+            raise HTTPException(status_code=401, detail="Incorrect username or password")
+        if not user.is_active:
+            logger.warning(f"Login failed: user inactive ({form_data.username})")
+            raise HTTPException(status_code=403, detail="User is inactive")
         tokens = create_tokens(user)
         user.refresh_token = tokens["refresh_token"]
         db.commit()
@@ -282,9 +307,9 @@ async def login_for_access_token(
             key="access_token",
             value=tokens["access_token"],
             httponly=True,
-            secure=True,  # 生产环境必须为 True
+            secure=True,
             samesite="Lax",
-            max_age=60*60*24  # 1天
+            max_age=60*60*24
         )
         # 可选：写入页面跳转信息
         response.set_cookie(
@@ -295,6 +320,8 @@ async def login_for_access_token(
             samesite="Lax"
         )
         return response
+    except HTTPException:
+        raise  # 让 FastAPI 正常返回 401/403
     except Exception as e:
         logger.error(f"Login error: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -378,13 +405,49 @@ async def register_user(
     except Exception as e:
         logger.error(f"Register error: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail="Internal server error")
+    
+# --------------------- 权限配置 ---------------------
+# 注意：实际应用中应从数据库或配置中心加载
+PERMISSIONS = {
+    "guest": ["tool_basic", "tool_essay", "tool_polish", "tool_plan", "tool_material"],  # guest不能访问 tool_university
+    "student": ["tool_basic", "tool_essay", "tool_polish", "tool_plan", "tool_material", "tool_university"],
+    "teacher": ["all_tools"]
+}
+
+def authorize(role: str, tool: str):
+    allowed = PERMISSIONS.get(role, [])
+    if "all_tools" in allowed or tool in allowed:
+        return True
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail=f"Insufficient permissions for this tool {tool}"
+    )
+
+
+
+class ToolCheckRequest(BaseModel):
+    tool: str
+
+@app.post("/authz")
+async def check_tool_permission(
+    req: ToolCheckRequest,
+    user: User = Depends(get_current_user_from_cookie)
+):
+    try:
+        authorize(user.role, req.tool)
+        return {"status": "ok"}
+    except HTTPException as e:
+        raise
+    except Exception as e:
+        logger.error(f"Authz error: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 # --------------------- 工具调用 ---------------------
 @app.post("/invoke")
 async def invoke_tool(
     payload: InvokePayload,
     request: Request,
-    auth: dict = Depends(get_current_user) or Depends(get_api_key)
+    auth: dict = Depends(get_current_user_from_cookie) or Depends(get_api_key)
 ):
     try:
         role = auth.role if hasattr(auth, 'role') else auth['role']

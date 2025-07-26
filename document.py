@@ -10,7 +10,7 @@ from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List
-from .login import get_db, get_current_user, User
+from .login import get_db, get_current_user_from_cookie, User
 
 class DocType(enum.Enum):
     resume = "resume"
@@ -84,7 +84,7 @@ router = APIRouter(prefix="/documents", tags=["Documents"])
 def create_document(
     doc: DocumentCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user_from_cookie)  # 修改此处
 ):
     try:
         document = Document(
@@ -118,7 +118,7 @@ def add_version(
     content: str,
     content_format: str = "markdown",
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user_from_cookie)  # 修改此处
 ):
     try:
         document = db.query(Document).filter(Document.id == doc_id, Document.user_id == current_user.id, Document.deleted_at == None).first()
@@ -149,7 +149,7 @@ def add_version(
 def get_document(
     doc_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user_from_cookie)  # 修改此处
 ):
     try:
         document = db.query(Document).filter(Document.id == doc_id, Document.user_id == current_user.id, Document.deleted_at == None).first()
@@ -166,7 +166,7 @@ def revert_document(
     doc_id: str,
     version_number: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user_from_cookie)  # 修改此处
 ):
     try:
         document = db.query(Document).filter(Document.id == doc_id, Document.user_id == current_user.id, Document.deleted_at == None).first()
@@ -189,7 +189,7 @@ def revert_document(
 def list_versions(
     doc_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user_from_cookie)  # 修改此处
 ):
     try:
         document = db.query(Document).filter(
@@ -214,7 +214,7 @@ def get_version(
     doc_id: str,
     version_number: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user_from_cookie)  # 修改此处
 ):
     try:
         document = db.query(Document).filter(
@@ -240,7 +240,7 @@ def get_version(
 @router.get("/", response_model=List[DocumentOut])
 def list_documents(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user_from_cookie)  # 修改此处
 ):
     try:
         docs = db.query(Document).filter(

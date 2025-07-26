@@ -1,17 +1,39 @@
 'use client'
 
-import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import Image from 'next/image'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import { useState } from 'react'
 
 export default function DashboardPage() {
   const [user] = useState({ name: '用户', email: 'user@example.com' })
+  const router = useRouter()
+
+  const handleToolClick = async (toolKey: string) => {
+    try {
+      const res = await fetch('http://localhost:8000/authz', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ tool: toolKey })
+      })
+      if (res.ok) {
+        router.push('/tools/test-cookie')
+      } else {
+        const data = await res.json()
+        alert(data.detail || '无权限访问该工具')
+      }
+    } catch (err) {
+      alert('网络错误，请稍后重试')
+    }
+  }
 
   const tools = [
     {
+      key: 'tool_essay',
       title: '文书生成器',
       description: '快速生成个人陈述、推荐信等留学文书',
       icon: '📝',
@@ -19,6 +41,7 @@ export default function DashboardPage() {
       textColor: 'text-blue-600'
     },
     {
+      key: 'tool_form',
       title: '申请表分析',
       description: '智能识别和解析各类申请表格',
       icon: '📋',
@@ -26,6 +49,7 @@ export default function DashboardPage() {
       textColor: 'text-green-600'
     },
     {
+      key: 'tool_polish',
       title: 'AI润色助手',
       description: '移除AI痕迹，让文书更加自然',
       icon: '✨',
@@ -33,6 +57,7 @@ export default function DashboardPage() {
       textColor: 'text-purple-600'
     },
     {
+      key: 'tool_university',
       title: '院校匹配',
       description: '根据个人条件推荐合适的院校',
       icon: '🎓',
@@ -40,6 +65,7 @@ export default function DashboardPage() {
       textColor: 'text-yellow-600'
     },
     {
+      key: 'tool_schedule',
       title: '时间规划',
       description: '制定个性化的申请时间表',
       icon: '📅',
@@ -47,6 +73,7 @@ export default function DashboardPage() {
       textColor: 'text-red-600'
     },
     {
+      key: 'tool_materials',
       title: '材料清单',
       description: '智能生成申请材料清单',
       icon: '📄',
@@ -102,7 +129,11 @@ export default function DashboardPage() {
             <h2 className="text-xl font-semibold mb-4">AI 工具箱</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {tools.map((tool, index) => (
-                <Card key={index} className={`cursor-pointer transition-all duration-200 ${tool.color} border-transparent hover:shadow-md`}>
+                <Card
+                  key={index}
+                  className={`cursor-pointer transition-all duration-200 ${tool.color} border-transparent hover:shadow-md`}
+                  onClick={() => handleToolClick(tool.key)}
+                >
                   <CardHeader className="pb-3">
                     <div className="flex items-center space-x-3">
                       <span className="text-2xl">{tool.icon}</span>
@@ -187,6 +218,21 @@ export default function DashboardPage() {
                   <span className="text-sm text-muted-foreground">成功申请</span>
                   <span className="text-sm font-medium">5 所院校</span>
                 </div>
+              </CardContent>
+            </Card>
+
+            {/* 文档管理 */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">文档管理</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Button
+                  className="w-full"
+                  onClick={() => router.push('/documents')}
+                >
+                  📂 查看我的文档
+                </Button>
               </CardContent>
             </Card>
           </div>

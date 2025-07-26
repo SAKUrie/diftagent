@@ -11,12 +11,32 @@ import { useRouter } from 'next/navigation'
 
 export default function LoginPage() {
   const [credentials, setCredentials] = useState({ username: '', password: '' })
+  const [error, setError] = useState<string | null>(null)
   const router = useRouter()
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    // 模拟登录成功，跳转到工具平台
-    router.push('/dashboard')
+    setError(null)
+    try {
+      const res = await fetch('http://localhost:8000/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          username: credentials.username,
+          password: credentials.password,
+        }),
+        credentials: 'include', // 允许后端设置cookie
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        setError(data.detail || '登录失败')
+        return
+      }
+      // 登录成功，跳转到 dashboard
+      router.push('/dashboard')
+    } catch (err) {
+      setError('网络错误，请稍后重试')
+    }
   }
 
   return (
@@ -66,6 +86,8 @@ export default function LoginPage() {
                 value={credentials.password}
                 onChange={(e) => setCredentials(prev => ({ ...prev, password: e.target.value }))}
               />
+
+              {error && <div className="text-red-500 text-sm">{error}</div>}
 
               <Button type="submit" className="w-full h-10 bg-primary hover:bg-primary/90 text-primary-foreground">
                 登录
