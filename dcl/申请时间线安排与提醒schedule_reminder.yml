@@ -1,0 +1,91 @@
+app:
+  description: ''
+  icon: 🤖
+  icon_background: '#FFEAD5'
+  mode: completion
+  name: 申请时间线安排与提醒schedule_reminder
+  use_icon_as_answer_icon: false
+dependencies:
+- current_identifier: null
+  type: marketplace
+  value:
+    marketplace_plugin_unique_identifier: langgenius/siliconflow:0.0.20@a0297ff9ba92d57b12efa51dad87bbf68f6556979d2f32ed15fc833a3a1f4f39
+kind: app
+model_config:
+  agent_mode:
+    enabled: false
+    max_iteration: 10
+    strategy: react
+    tools: []
+  annotation_reply:
+    enabled: false
+  chat_prompt_config: {}
+  completion_prompt_config: {}
+  dataset_configs:
+    datasets:
+      datasets: []
+    reranking_enable: false
+    retrieval_model: multiple
+    top_k: 4
+  dataset_query_variable: ''
+  external_data_tools: []
+  file_upload:
+    allowed_file_extensions:
+    - .JPG
+    - .JPEG
+    - .PNG
+    - .GIF
+    - .WEBP
+    - .SVG
+    - .MP4
+    - .MOV
+    - .MPEG
+    - .WEBM
+    allowed_file_types: []
+    allowed_file_upload_methods:
+    - remote_url
+    - local_file
+    enabled: false
+    image:
+      detail: high
+      enabled: false
+      number_limits: 3
+      transfer_methods:
+      - remote_url
+      - local_file
+    number_limits: 3
+  model:
+    completion_params:
+      stop: []
+    mode: chat
+    name: Pro/moonshotai/Kimi-K2-Instruct
+    provider: langgenius/siliconflow/siliconflow
+  more_like_this:
+    enabled: false
+  opening_statement: null
+  pre_prompt: '你需要基于现在的时间和{{query}}中的目标申请日期，为用户安排清晰简洁的申请时间安排时间线。
+
+    只需要给出目标日期，截止日前需要做的事情，不需要过多解释。'
+  prompt_type: simple
+  retriever_resource:
+    enabled: true
+  sensitive_word_avoidance:
+    configs: []
+    enabled: false
+    type: ''
+  speech_to_text:
+    enabled: false
+  suggested_questions: []
+  suggested_questions_after_answer:
+    enabled: false
+  text_to_speech:
+    enabled: false
+    language: ''
+    voice: ''
+  user_input_form:
+  - paragraph:
+      default: ''
+      label: Query
+      required: true
+      variable: query
+version: 0.3.0
