@@ -1,12 +1,12 @@
 from sqlalchemy.orm import Session
 from datetime import datetime
-from models import (
+from models.models import (
     Base, User, DocType,
     ResumeDocument, ResumeDocumentVersion,
     LetterDocument, LetterDocumentVersion,
     SopDocument, SopDocumentVersion
 )
-from routers import get_db, get_current_user_from_cookie
+from api.routers import get_db, get_current_user_from_cookie
 from pydantic import BaseModel, Field, validator
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form

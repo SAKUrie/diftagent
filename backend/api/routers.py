@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 import traceback
 import logging
 
-from models import User
+from models.models import User
 from pydantic import BaseModel
 from passlib.context import CryptContext
 from jose import JWTError, jwt

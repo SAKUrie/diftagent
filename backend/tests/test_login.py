@@ -9,9 +9,9 @@ from datetime import datetime
 
 # 配置
 BASE_URL = "http://localhost:8000"
-LOGIN_URL = f"{BASE_URL}/login"
-REGISTER_URL = f"{BASE_URL}/register"
-REFRESH_URL = f"{BASE_URL}/refresh"
+LOGIN_URL = f"{BASE_URL}/auth/login"
+REGISTER_URL = f"{BASE_URL}/auth/register"
+REFRESH_URL = f"{BASE_URL}/auth/refresh"
 HEALTH_URL = f"{BASE_URL}/health"
 AUTHZ_URL = f"{BASE_URL}/authz"
 

@@ -11,8 +11,8 @@ from sqlalchemy.orm import sessionmaker
 import traceback
 
 # 导入路由
-from routers import auth_router, agent_router, health_router
-from models import Base
+from api.routers import auth_router, agent_router, health_router
+from models.models import Base
 
 # 创建日志记录器
 logger = logging.getLogger("diftagent")
@@ -63,7 +63,7 @@ app.include_router(health_router)
 # 延迟导入文档路由以避免循环导入
 def include_document_routes():
     try:
-        from doc_api import doc_router as document_router
+        from api.documents.doc_api import doc_router as document_router
         app.include_router(document_router)
         logger.info("Document routes included successfully")
     except ImportError as e:

@@ -7,8 +7,10 @@ import sys
 import psycopg2
 from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
 
-# 添加当前目录到Python路径
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+# 添加项目根目录到Python路径
+current_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.dirname(current_dir)
+sys.path.append(project_root)
 
 def init_database():
     """初始化数据库"""
@@ -46,7 +48,7 @@ def init_database():
                 return
         
         # 读取SQL文件
-        sql_file_path = os.path.join(os.path.dirname(__file__), 'sql', 'documents_new_structure.sql')
+        sql_file_path = os.path.join(project_root, 'config', 'sql', 'documents_new_structure.sql')
         
         if not os.path.exists(sql_file_path):
             print(f"SQL文件不存在: {sql_file_path}")
