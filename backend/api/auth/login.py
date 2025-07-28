@@ -7,9 +7,8 @@ from jose import JWTError, jwt
 from passlib.context import CryptContext
 from pydantic import BaseModel
 from pydantic_settings import BaseSettings
-from sqlalchemy import create_engine, Column, String, Boolean, Integer, SmallInteger, DateTime, func
-from sqlalchemy.orm import sessionmaker, Session,declarative_base
-from sqlalchemy.dialects.postgresql import UUID, JSONB, CITEXT
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker, Session
 import httpx
 import uuid
 import traceback
@@ -59,27 +58,7 @@ class Settings(BaseSettings):
 settings = Settings()
 
 # --------------------- 数据库模型 ---------------------
-Base = declarative_base()
-
-class User(Base):
-    __tablename__ = "users"
-
-    id = Column(UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid())
-    username = Column(String, nullable=False, index=True)
-    email = Column(CITEXT(), nullable=False, index=True)
-    password_hash = Column(String, nullable=False)
-    role = Column(String, nullable=False, default="user")
-    status = Column(SmallInteger, nullable=False, default=1)
-    failed_login_attempts = Column(Integer, nullable=False, default=0)
-    locked_until = Column(DateTime, nullable=True)
-    last_login_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, nullable=False, server_default=func.now())
-    updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
-    deleted_at = Column(DateTime, nullable=True)
-    user_metadata = Column(JSONB, nullable=False, default=dict)  # 修改这里
-    refresh_token = Column(String, nullable=True)  # 刷新令牌
-    is_active = Column(Boolean, nullable=False, default=True)  # 是否激活
-    # 如需软删除过滤，可加 __mapper_args__ = {"eager_defaults": True}
+from models import Base, User
 
 # 初始化数据库
 engine = create_engine(settings.pg_dsn)
@@ -363,6 +342,8 @@ async def refresh_access_token(
         db.commit()
         logger.info(f"Refresh token success for user: {username}")
         return tokens
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"DB error in refresh: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -374,6 +355,7 @@ async def register_user(
     db: Session = Depends(get_db)
 ):
     try:
+        # 检查邮箱是否已存在
         existing_user = db.query(User).filter(User.email == user_create.email, User.deleted_at == None).first()
         if existing_user:
             logger.warning(f"Register failed, email exists: {user_create.email}")
@@ -381,6 +363,32 @@ async def register_user(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Email already registered"
             )
+        
+        # 检查用户名是否已存在
+        existing_username = db.query(User).filter(User.username == user_create.username, User.deleted_at == None).first()
+        if existing_username:
+            logger.warning(f"Register failed, username exists: {user_create.username}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Username already taken"
+            )
+        
+        # 验证角色是否有效
+        valid_roles = ['guest', 'vvip', 'consultant', 'etc..']
+        if user_create.role not in valid_roles:
+            logger.warning(f"Register failed, invalid role: {user_create.role}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid role. Must be one of: {', '.join(valid_roles)}"
+            )
+        
+        # 验证密码长度
+        if len(user_create.password) < 6:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Password must be at least 6 characters long"
+            )
+        
         hashed_password = get_password_hash(user_create.password)
         db_user = User(
             username=user_create.username,
@@ -389,7 +397,7 @@ async def register_user(
             role=user_create.role,
             status=1,
             failed_login_attempts=0,
-            user_metadata={}  # 注意这里字段名
+            user_metadata={}
         )
         db.add(db_user)
         db.commit()
@@ -397,14 +405,46 @@ async def register_user(
         logger.info(f"User registered: {user_create.email}")
         return UserInDB(
             id=str(db_user.id),
-            username=db_user.username,  # 你的表结构没有username字段，如有需要请补充
+            username=db_user.username,
             email=db_user.email,
             role=db_user.role,
             is_active=(db_user.status == 1)
         )
+    except HTTPException:
+        # 重新抛出HTTP异常
+        raise
     except Exception as e:
         logger.error(f"Register error: {traceback.format_exc()}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        # 检查是否是数据库约束错误
+        error_str = str(e).lower()
+        if "unique" in error_str or "duplicate" in error_str:
+            if "email" in error_str:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Email already registered"
+                )
+            elif "username" in error_str:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Username already taken"
+                )
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Duplicate entry"
+                )
+        elif "check" in error_str and "role" in error_str:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid role"
+            )
+        elif "check" in error_str and "password" in error_str:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Password does not meet requirements"
+            )
+        else:
+            raise HTTPException(status_code=500, detail="Internal server error")
     
 # --------------------- 权限配置 ---------------------
 # 注意：实际应用中应从数据库或配置中心加载
@@ -434,7 +474,7 @@ async def check_tool_permission(
     try:
         authorize(user.role, req.tool)
         return {"status": "ok"}
-    except HTTPException as e:
+    except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Authz error: {traceback.format_exc()}")
@@ -458,8 +498,7 @@ async def invoke_tool(
             "tool": payload.tool,
             "result": result
         }
-    except HTTPException as e:
-        logger.warning(f"Tool invoke HTTP error: {e.detail}")
+    except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Tool invoke error: {traceback.format_exc()}")
@@ -471,6 +510,8 @@ def health_check():
     try:
         logger.info("Health check requested")
         return {"status": "ok", "timestamp": datetime.utcnow()}
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Health check error: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -483,16 +524,30 @@ async def log_requests(request: Request, call_next):
         response = await call_next(request)
         logger.info(f"Response status: {response.status_code}")
         return response
+    except HTTPException:
+        # 重新抛出HTTP异常，不记录为错误
+        raise
     except Exception as e:
         logger.error(f"Request error: {traceback.format_exc()}")
         raise
 
 
-# 添加 路由
-from doc_api import doc_router as document_router
-app.include_router(document_router)
+# 延迟导入以避免循环导入
+def include_document_routes():
+    from doc_api import doc_router as document_router
+    app.include_router(document_router)
+
+# 导入文档模型以确保表被创建
+from models import (
+    ResumeDocument, ResumeDocumentVersion,
+    LetterDocument, LetterDocumentVersion,
+    SopDocument, SopDocumentVersion
+)
 
 
+
+# 在应用启动时包含文档路由
+include_document_routes()
 
 if __name__ == "__main__":
     import uvicorn
