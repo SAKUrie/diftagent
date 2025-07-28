@@ -71,6 +71,17 @@ def include_document_routes():
     except Exception as e:
         logger.error(f"Error including document routes: {e}")
 
+# 延迟导入对话日志路由以避免循环导入
+def include_conversation_routes():
+    try:
+        from api.conversations.conversation_api import conversation_router
+        app.include_router(conversation_router)
+        logger.info("Conversation routes included successfully")
+    except ImportError as e:
+        logger.warning(f"Could not import conversation routes: {e}")
+    except Exception as e:
+        logger.error(f"Error including conversation routes: {e}")
+
 # 中间件
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
@@ -89,6 +100,8 @@ async def startup_event():
     logger.info("Starting DiftAgent API server...")
     # 包含文档路由
     include_document_routes()
+    # 包含对话日志路由
+    include_conversation_routes()
     logger.info("DiftAgent API server started successfully")
 
 # 关闭事件

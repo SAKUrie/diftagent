@@ -145,6 +145,7 @@ class SopDocumentVersion(Base):
 User.resume_documents = relationship("ResumeDocument", back_populates="user")
 User.letter_documents = relationship("LetterDocument", back_populates="user")
 User.sop_documents = relationship("SopDocument", back_populates="user")
+User.conversation_sessions = relationship("ConversationSession", back_populates="user")
 
 # 创建索引
 Index('idx_resume_versions_history', ResumeDocumentVersion.document_id, ResumeDocumentVersion.created_at.desc(), 
@@ -152,4 +153,7 @@ Index('idx_resume_versions_history', ResumeDocumentVersion.document_id, ResumeDo
 Index('idx_letter_versions_history', LetterDocumentVersion.document_id, LetterDocumentVersion.created_at.desc(), 
       LetterDocumentVersion.deleted_at, postgresql_include=[LetterDocumentVersion.version_number, LetterDocumentVersion.content_format])
 Index('idx_sop_versions_history', SopDocumentVersion.document_id, SopDocumentVersion.created_at.desc(), 
-      SopDocumentVersion.deleted_at, postgresql_include=[SopDocumentVersion.version_number, SopDocumentVersion.content_format]) 
+      SopDocumentVersion.deleted_at, postgresql_include=[SopDocumentVersion.version_number, SopDocumentVersion.content_format])
+
+# 导入对话日志模型
+from .conversation import ConversationSession, ConversationMessage 

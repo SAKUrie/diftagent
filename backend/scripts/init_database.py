@@ -35,7 +35,7 @@ def init_database():
             SELECT table_name 
             FROM information_schema.tables 
             WHERE table_schema = 'public' 
-            AND table_name IN ('resume_documents', 'letter_documents', 'sop_documents')
+            AND table_name IN ('resume_documents', 'letter_documents', 'sop_documents', 'conversation_sessions', 'conversation_messages')
         """)
         
         existing_tables = [row[0] for row in cursor.fetchall()]
@@ -48,19 +48,34 @@ def init_database():
                 return
         
         # 读取SQL文件
-        sql_file_path = os.path.join(project_root, 'config', 'sql', 'documents_new_structure.sql')
+        documents_sql_path = os.path.join(project_root, 'config', 'sql', 'documents_new_structure.sql')
+        conversations_sql_path = os.path.join(project_root, 'config', 'sql', 'conversation_logs.sql')
         
-        if not os.path.exists(sql_file_path):
-            print(f"SQL文件不存在: {sql_file_path}")
+        # 检查SQL文件是否存在
+        if not os.path.exists(documents_sql_path):
+            print(f"文档SQL文件不存在: {documents_sql_path}")
             return
         
-        print("读取SQL文件...")
-        with open(sql_file_path, 'r', encoding='utf-8') as f:
-            sql_content = f.read()
+        if not os.path.exists(conversations_sql_path):
+            print(f"对话日志SQL文件不存在: {conversations_sql_path}")
+            return
+        
+
+        
+        print("读取文档SQL文件...")
+        with open(documents_sql_path, 'r', encoding='utf-8') as f:
+            documents_sql = f.read()
+        
+        print("读取对话日志SQL文件...")
+        with open(conversations_sql_path, 'r', encoding='utf-8') as f:
+            conversations_sql = f.read()
         
         # 执行SQL
-        print("执行SQL语句...")
-        cursor.execute(sql_content)
+        print("执行文档SQL语句...")
+        cursor.execute(documents_sql)
+        
+        print("执行对话日志SQL语句...")
+        cursor.execute(conversations_sql)
         
         print("数据库初始化完成！")
         
@@ -69,7 +84,7 @@ def init_database():
             SELECT table_name 
             FROM information_schema.tables 
             WHERE table_schema = 'public' 
-            AND table_name LIKE '%_documents%'
+            AND (table_name LIKE '%_documents%' OR table_name LIKE '%conversation%')
             ORDER BY table_name
         """)
         
